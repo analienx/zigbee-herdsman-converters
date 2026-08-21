@@ -30147,3 +30147,54 @@ export const definitions: DefinitionWithExtend[] = [
         },
     },
 ];
+
+// SMTONOFF ZXB3-125 shares the broad TS0601/_TZE204 identity with SUTON, but
+// its sparse endpoint topology and verified phase wiring are distinct. Keep
+// the existing SUTON definition unchanged and select this narrower definition
+// only when the complete endpoint signature matches.
+const sutonStb3l125 = definitions.find((definition) => definition.model === "STB3L-125-ZJ");
+if (!sutonStb3l125?.meta?.tuyaDatapoints) {
+    throw new Error("Built-in STB3L-125-ZJ definition not found or has no Tuya datapoints");
+}
+
+definitions.push({
+    ...sutonStb3l125,
+    fingerprint: [
+        {
+            modelID: "TS0601",
+            manufacturerName: "_TZE204_wbhaespm",
+            applicationVersion: 74,
+            hardwareVersion: 1,
+            endpoints: [
+                {
+                    ID: 1,
+                    profileID: 0x0104,
+                    deviceID: 0x0051,
+                    inputClusters: [0x0000, 0x0004, 0x0005, 0xef00],
+                    outputClusters: [0x000a, 0x0019],
+                },
+                {
+                    ID: 242,
+                    profileID: 0xa1e0,
+                    deviceID: 0x0061,
+                    inputClusters: [],
+                    outputClusters: [0x0021],
+                },
+            ],
+            // The existing SUTON fingerprint has the selector default (0).
+            priority: 1,
+        },
+    ],
+    model: "ZXB3-125",
+    vendor: "SMTONOFF",
+    description: "SMTONOFF ZXB3-125 three-phase breaker",
+    meta: {
+        ...sutonStb3l125.meta,
+        tuyaDatapoints: sutonStb3l125.meta.tuyaDatapoints.map(([dp, property, converter, meta]) => {
+            if (property === null && dp === 6) return [dp, property, tuya.valueConverter.phaseVariant2WithPhase("c"), meta];
+            if (property === null && dp === 7) return [dp, property, tuya.valueConverter.phaseVariant2WithPhase("b"), meta];
+            if (property === null && dp === 8) return [dp, property, tuya.valueConverter.phaseVariant2WithPhase("a"), meta];
+            return [dp, property, converter, meta];
+        }),
+    },
+});
