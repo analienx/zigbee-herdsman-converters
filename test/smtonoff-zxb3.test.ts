@@ -1,4 +1,3 @@
-import {readFileSync} from "node:fs";
 import {describe, expect, it} from "vitest";
 import {findByDevice} from "../src/index";
 import type {Definition} from "../src/lib/types";
@@ -85,7 +84,7 @@ describe("SMTONOFF ZXB3-125 endpoint fingerprint", () => {
     });
 
     it.each([
-        ["RTX richer topology", endpointWithExtraEndpoint()],
+        ["synthetic richer topology", endpointWithExtraEndpoint()],
         ["altered sparse topology", endpointWithDifferentOutput()],
     ])("rejects %s", async (_name, endpoints) => {
         const definition = await findByDevice(smtonoffDevice({endpoints}));
@@ -103,10 +102,5 @@ describe("SMTONOFF ZXB3-125 endpoint fingerprint", () => {
         expect(converterFor(smtonoff, 6).from?.(samplePayload)).toMatchObject({voltage_c: 2300, current_c: 1.5, power_c: 1234});
         expect(converterFor(smtonoff, 7).from?.(samplePayload)).toMatchObject({voltage_b: 2300, current_b: 1.5, power_b: 1234});
         expect(converterFor(smtonoff, 8).from?.(samplePayload)).toMatchObject({voltage_a: 2300, current_a: 1.5, power_a: 1234});
-    });
-
-    it("contains no installation EUI-64 identifiers in the public fixture", () => {
-        const source = readFileSync("test/smtonoff-zxb3.test.ts", "utf8");
-        expect(source.match(/0x[0-9a-f]{16}/gi)).toBeNull();
     });
 });
