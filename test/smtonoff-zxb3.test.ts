@@ -56,7 +56,7 @@ function tuyaMessage(dps: number[]) {
         data: {
             dpValues: dps.map((dp) => ({dp, datatype: 0, data: Buffer.alloc(0)})),
         },
-    } as unknown as Fz.Message<any>;
+    } as unknown as Fz.Message<"manuSpecificTuya">;
 }
 
 function converterMeta(device: ReturnType<typeof smtonoffDevice>) {
