@@ -16,7 +16,6 @@ function isThreePhase(device: Zh.Device | DummyDevice): boolean {
 function markThreePhase(meta?: Fz.Meta): void {
     if (!meta || meta.device.meta?.[zxb3PhaseVariantMetaKey] === "3p") return;
 
-    meta.device.meta ??= {};
     meta.device.meta[zxb3PhaseVariantMetaKey] = "3p";
     meta.device.save();
     meta.deviceExposesChanged();
