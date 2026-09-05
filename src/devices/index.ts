@@ -309,6 +309,7 @@ import {definitions as smartenit} from "./smartenit";
 import {definitions as smartthings} from "./smartthings";
 import {definitions as smartwings} from "./smartwings";
 import {definitions as smlight} from "./smlight";
+import {definitions as smtonoff} from "./smtonoff";
 import {definitions as soanalarm} from "./soanalarm";
 import {definitions as sohanElectric} from "./sohan_electric";
 import {definitions as solaredge} from "./solaredge";
@@ -691,6 +692,7 @@ const definitions: DefinitionWithExtend[] = [
     ...smartthings,
     ...smartwings,
     ...smlight,
+    ...smtonoff,
     ...soanalarm,
     ...sohanElectric,
     ...solaredge,
