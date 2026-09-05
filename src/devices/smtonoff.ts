@@ -21,8 +21,8 @@ function markThreePhase(meta?: Fz.Meta): void {
     meta.deviceExposesChanged();
 }
 
-function reportContainsThreePhaseDp(msg?: Fz.Message<"manuSpecificTuya">): boolean {
-    const dpValues = (msg?.data as {dpValues?: Array<{dp?: number}>} | undefined)?.dpValues;
+function reportContainsThreePhaseDp(msg?: unknown): boolean {
+    const dpValues = (msg as {data?: {dpValues?: Array<{dp?: number}>}} | undefined)?.data?.dpValues;
     return dpValues?.some((dpValue) => dpValue.dp === 7 || dpValue.dp === 8) ?? false;
 }
 
