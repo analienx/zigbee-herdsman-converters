@@ -1,67 +1,25 @@
 import * as exposes from "../lib/exposes";
 import * as tuya from "../lib/tuya";
-import type {DefinitionWithExtend, DummyDevice, Fz, Tuya, Zh} from "../lib/types";
-import * as utils from "../lib/utils";
+import type {DefinitionWithExtend, Tuya} from "../lib/types";
 
 const e = exposes.presets;
 const ea = exposes.access;
 const te = tuya.exposes;
 
-const zxb3PhaseVariantMetaKey = "smtonoffZxb3PhaseVariant";
+type Phase = "a" | "b" | "c";
+type PhaseMapping = "abc" | "cba";
 
-function isThreePhase(device: Zh.Device | DummyDevice): boolean {
-    return !utils.isDummyDevice(device) && device.meta?.[zxb3PhaseVariantMetaKey] === "3p";
-}
-
-function markThreePhase(meta?: Fz.Meta): void {
-    if (!meta || meta.device.meta?.[zxb3PhaseVariantMetaKey] === "3p") return;
-
-    meta.device.meta[zxb3PhaseVariantMetaKey] = "3p";
-    meta.device.save();
-    meta.deviceExposesChanged();
-}
-
-function reportContainsThreePhaseDp(msg?: unknown): boolean {
-    const dpValues = (msg as {data?: {dpValues?: Array<{dp?: number}>}} | undefined)?.data?.dpValues;
-    return dpValues?.some((dpValue) => dpValue.dp === 7 || dpValue.dp === 8) ?? false;
-}
-
-const dp6VariantAware: Tuya.ValueConverterSingle = {
-    from: (value, meta, _options, _publish, msg) => {
-        if (reportContainsThreePhaseDp(msg)) markThreePhase(meta);
-
-        return meta?.device.meta?.[zxb3PhaseVariantMetaKey] === "3p"
-            ? tuya.valueConverter.phaseVariant2WithPhase("c").from(value)
-            : tuya.valueConverter.phaseVariant2.from(value);
-    },
+const phaseMappings: Record<PhaseMapping, Record<6 | 7 | 8, Phase>> = {
+    abc: {6: "a", 7: "b", 8: "c"},
+    cba: {6: "c", 7: "b", 8: "a"},
 };
 
-const dp7ThreePhase: Tuya.ValueConverterSingle = {
-    from: (value, meta) => {
-        markThreePhase(meta);
-        return tuya.valueConverter.phaseVariant2WithPhase("b").from(value);
+const phaseVariant = (dp: 6 | 7 | 8): Tuya.ValueConverterSingle => ({
+    from: (value, _meta, options) => {
+        const mapping: PhaseMapping = options?.phase_mapping === "cba" ? "cba" : "abc";
+        return tuya.valueConverter.phaseVariant2WithPhase(phaseMappings[mapping][dp]).from(value);
     },
-};
-
-const dp8ThreePhase: Tuya.ValueConverterSingle = {
-    from: (value, meta) => {
-        markThreePhase(meta);
-        return tuya.valueConverter.phaseVariant2WithPhase("a").from(value);
-    },
-};
-
-const singlePhaseMeasurementExposes = () => [e.voltage(), e.current(), e.power()];
-const threePhaseMeasurementExposes = () => [
-    tuya.exposes.voltageWithPhase("a"),
-    tuya.exposes.voltageWithPhase("b"),
-    tuya.exposes.voltageWithPhase("c"),
-    tuya.exposes.powerWithPhase("a"),
-    tuya.exposes.powerWithPhase("b"),
-    tuya.exposes.powerWithPhase("c"),
-    tuya.exposes.currentWithPhase("a"),
-    tuya.exposes.currentWithPhase("b"),
-    tuya.exposes.currentWithPhase("c"),
-];
+});
 
 export const definitions: DefinitionWithExtend[] = [
     {
@@ -93,93 +51,94 @@ export const definitions: DefinitionWithExtend[] = [
         model: "ZXB3-125",
         vendor: "SMTONOFF",
         description: "Circuit breaker with energy monitoring",
-        version: "0.0.1",
-        extend: [tuya.modernExtend.tuyaBase({dp: true, queryOnConfigure: true})],
-        exposes: (device, _options) => {
-            const measurements = utils.isDummyDevice(device)
-                ? [...singlePhaseMeasurementExposes(), ...threePhaseMeasurementExposes()]
-                : isThreePhase(device)
-                  ? threePhaseMeasurementExposes()
-                  : singlePhaseMeasurementExposes();
-
-            return [
-                tuya.exposes.switch(),
-                e.energy(),
-                te.circuitBreakerFaults(),
-                ...measurements,
-                e.temperature(),
-                e.binary("leakage_test", ea.STATE_SET, "ON", "OFF").withDescription("Turn ON to perform a leagage test"),
-                e
-                    .binary("over_current_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("over_current_threshold", ea.STATE_SET)
-                    .withUnit("A")
-                    .withDescription("Setup the value on the device")
-                    .withValueMin(1)
-                    .withValueMax(63),
-                e
-                    .binary("over_voltage_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("over_voltage_threshold", ea.STATE_SET)
-                    .withUnit("V")
-                    .withDescription("Setup value on the device")
-                    .withValueMin(250)
-                    .withValueMax(300),
-                e
-                    .binary("under_voltage_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("under_voltage_threshold", ea.STATE_SET)
-                    .withUnit("V")
-                    .withDescription("Setup value on the device")
-                    .withValueMin(150)
-                    .withValueMax(200),
-                e
-                    .binary("insufficient_balance_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("insufficient_balance_threshold", ea.STATE_SET)
-                    .withUnit("kWh")
-                    .withDescription("Setup the value on the device")
-                    .withValueMin(1)
-                    .withValueMax(65535),
-                e
-                    .binary("overload_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("overload_threshold", ea.STATE_SET)
-                    .withUnit("kW")
-                    .withDescription("Setup the value on the device")
-                    .withValueMin(1)
-                    .withValueMax(25),
-                e
-                    .binary("leakage_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("leakage_threshold", ea.STATE_SET)
-                    .withUnit("mA")
-                    .withDescription("Setup the value on the device")
-                    .withValueMin(10)
-                    .withValueMax(90),
-                e
-                    .binary("high_temperature_breaker", ea.STATE_SET, "ON", "OFF")
-                    .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
-                e
-                    .numeric("high_temperature_threshold", ea.STATE_SET)
-                    .withUnit("°C")
-                    .withDescription("Setup value on the device")
-                    .withValueMin(40)
-                    .withValueMax(100),
-            ];
-        },
+        version: "0.0.2",
+        extend: [tuya.modernExtend.tuyaBase({dp: true})],
+        options: [exposes.options.phase_mapping()],
+        exposes: [
+            tuya.exposes.switch(),
+            e.energy(),
+            te.circuitBreakerFaults(),
+            tuya.exposes.voltageWithPhase("a"),
+            tuya.exposes.voltageWithPhase("b"),
+            tuya.exposes.voltageWithPhase("c"),
+            tuya.exposes.powerWithPhase("a"),
+            tuya.exposes.powerWithPhase("b"),
+            tuya.exposes.powerWithPhase("c"),
+            tuya.exposes.currentWithPhase("a"),
+            tuya.exposes.currentWithPhase("b"),
+            tuya.exposes.currentWithPhase("c"),
+            e.temperature(),
+            e.binary("leakage_test", ea.STATE_SET, "ON", "OFF").withDescription("Turn ON to perform a leagage test"),
+            e
+                .binary("over_current_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("over_current_threshold", ea.STATE_SET)
+                .withUnit("A")
+                .withDescription("Setup the value on the device")
+                .withValueMin(1)
+                .withValueMax(63),
+            e
+                .binary("over_voltage_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("over_voltage_threshold", ea.STATE_SET)
+                .withUnit("V")
+                .withDescription("Setup value on the device")
+                .withValueMin(250)
+                .withValueMax(300),
+            e
+                .binary("under_voltage_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("under_voltage_threshold", ea.STATE_SET)
+                .withUnit("V")
+                .withDescription("Setup value on the device")
+                .withValueMin(150)
+                .withValueMax(200),
+            e
+                .binary("insufficient_balance_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("insufficient_balance_threshold", ea.STATE_SET)
+                .withUnit("kWh")
+                .withDescription("Setup the value on the device")
+                .withValueMin(1)
+                .withValueMax(65535),
+            e
+                .binary("overload_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("overload_threshold", ea.STATE_SET)
+                .withUnit("kW")
+                .withDescription("Setup the value on the device")
+                .withValueMin(1)
+                .withValueMax(25),
+            e
+                .binary("leakage_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("leakage_threshold", ea.STATE_SET)
+                .withUnit("mA")
+                .withDescription("Setup the value on the device")
+                .withValueMin(10)
+                .withValueMax(90),
+            e
+                .binary("high_temperature_breaker", ea.STATE_SET, "ON", "OFF")
+                .withDescription("OFF - alarm only, ON - relay will turn off when threshold reached"),
+            e
+                .numeric("high_temperature_threshold", ea.STATE_SET)
+                .withUnit("°C")
+                .withDescription("Setup value on the device")
+                .withValueMin(40)
+                .withValueMax(100),
+        ],
         meta: {
             tuyaDatapoints: [
                 [1, "energy", tuya.valueConverter.divideBy100],
-                [6, null, dp6VariantAware],
-                [7, null, dp7ThreePhase],
-                [8, null, dp8ThreePhase],
+                [6, null, phaseVariant(6)],
+                [7, null, phaseVariant(7)],
+                [8, null, phaseVariant(8)],
                 [9, "faults", tuya.valueConverter.circuitBreakerFaults],
                 [16, "state", tuya.valueConverter.onOff],
                 [17, null, tuya.valueConverter.threshold_2],

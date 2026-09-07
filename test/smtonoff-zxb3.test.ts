@@ -3,8 +3,6 @@ import {findByDevice} from "../src/index";
 import type {Definition, Fz} from "../src/lib/types";
 import {mockDevice} from "./utils";
 
-const phaseVariantMetaKey = "smtonoffZxb3PhaseVariant";
-
 const sparseEndpoints = [
     {
         ID: 1,
@@ -67,97 +65,90 @@ function converterMeta(device: ReturnType<typeof smtonoffDevice>) {
     } satisfies Fz.Meta;
 }
 
-function exposeProperties(definition: Definition, device: ReturnType<typeof smtonoffDevice>) {
-    const exposeList = typeof definition.exposes === "function" ? definition.exposes(device, {}) : definition.exposes;
-    return exposeList.map((expose) => expose.property).filter((property): property is string => property !== undefined);
+function exposeProperties(definition: Definition) {
+    return (typeof definition.exposes === "function" ? definition.exposes(undefined as never, {}) : definition.exposes)
+        .map((expose) => expose.property)
+        .filter((property): property is string => property !== undefined);
 }
 
 const samplePayload = Buffer.from([0x59, 0xd8, 0x00, 0x05, 0xdc, 0x00, 0x04, 0xd2]).toString("base64");
 
-describe("SMTONOFF ZXB3-125 runtime phase variant", () => {
-    it("selects the sparse SMTONOFF definition and still rejects the SUTON ED00 topology", async () => {
+describe("SMTONOFF ZXB3-125 phase mapping", () => {
+    it("selects the dedicated definition and keeps the SUTON ED00 fallback", async () => {
         const smtonoff = await findByDevice(smtonoffDevice());
-        expect(smtonoff).toMatchObject({model: "ZXB3-125", vendor: "SMTONOFF", version: "0.0.1"});
+        expect(smtonoff).toMatchObject({model: "ZXB3-125", vendor: "SMTONOFF", version: "0.0.2"});
         expect(smtonoff?.fingerprint?.[0].priority).toBe(1);
+        expect(smtonoff?.options?.find((option) => option.name === "phase_mapping")).toMatchObject({
+            type: "enum",
+            values: ["abc", "cba"],
+        });
 
         const suton = await findByDevice(smtonoffDevice(sutonEd00Endpoints()));
         expect(suton).toMatchObject({model: "STB3L-125-ZJ", vendor: "SUTON"});
     });
 
-    it("keeps a DP6-only device single-phase compatible", async () => {
+    it("uses legacy abc mapping by default", async () => {
         const device = smtonoffDevice();
         const definition = requireDefinition(await findByDevice(device));
         const meta = converterMeta(device);
 
-        const result = converterFor(definition, 6).from?.(samplePayload, meta, {}, () => {}, tuyaMessage([6]));
-
-        expect(result).toMatchObject({voltage: 2300, current: 1.5, power: 1234});
-        expect(device.meta[phaseVariantMetaKey]).toBeUndefined();
-        expect(meta.deviceExposesChanged).not.toHaveBeenCalled();
-        expect(device.save).not.toHaveBeenCalled();
-
-        const properties = exposeProperties(definition, device);
-        expect(properties).toContain("power");
-        expect(properties).not.toContain("power_a");
-        expect(properties).not.toContain("power_b");
-        expect(properties).not.toContain("power_c");
-    });
-
-    it("upgrades immediately when DP7 or DP8 is present in the same report", async () => {
-        const device = smtonoffDevice();
-        const definition = requireDefinition(await findByDevice(device));
-        const meta = converterMeta(device);
-        const msg = tuyaMessage([6, 7, 8]);
-
-        expect(converterFor(definition, 6).from?.(samplePayload, meta, {}, () => {}, msg)).toMatchObject({
-            voltage_c: 2300,
-            current_c: 1.5,
-            power_c: 1234,
-        });
-        expect(converterFor(definition, 7).from?.(samplePayload, meta, {}, () => {}, msg)).toMatchObject({
-            voltage_b: 2300,
-            current_b: 1.5,
-            power_b: 1234,
-        });
-        expect(converterFor(definition, 8).from?.(samplePayload, meta, {}, () => {}, msg)).toMatchObject({
+        expect(converterFor(definition, 6).from?.(samplePayload, meta, {}, () => {}, tuyaMessage([6]))).toMatchObject({
             voltage_a: 2300,
             current_a: 1.5,
             power_a: 1234,
         });
-
-        expect(device.meta[phaseVariantMetaKey]).toBe("3p");
-        expect(meta.deviceExposesChanged).toHaveBeenCalledOnce();
-        expect(device.save).toHaveBeenCalledOnce();
-
-        const properties = exposeProperties(definition, device);
-        expect(properties).not.toContain("power");
-        expect(properties).toEqual(expect.arrayContaining(["power_a", "power_b", "power_c"]));
-    });
-
-    it("upgrades when a later single-DP DP7 report arrives", async () => {
-        const device = smtonoffDevice();
-        const definition = requireDefinition(await findByDevice(device));
-        const meta = converterMeta(device);
-
         expect(converterFor(definition, 7).from?.(samplePayload, meta, {}, () => {}, tuyaMessage([7]))).toMatchObject({
             voltage_b: 2300,
             current_b: 1.5,
             power_b: 1234,
         });
-        expect(device.meta[phaseVariantMetaKey]).toBe("3p");
-        expect(meta.deviceExposesChanged).toHaveBeenCalledOnce();
-    });
-
-    it("never downgrades a persisted three-phase device on a later DP6-only report", async () => {
-        const device = smtonoffDevice();
-        device.meta[phaseVariantMetaKey] = "3p";
-        const definition = requireDefinition(await findByDevice(device));
-        const meta = converterMeta(device);
-
-        const result = converterFor(definition, 6).from?.(samplePayload, meta, {}, () => {}, tuyaMessage([6]));
-
-        expect(result).toMatchObject({voltage_c: 2300, current_c: 1.5, power_c: 1234});
+        expect(converterFor(definition, 8).from?.(samplePayload, meta, {}, () => {}, tuyaMessage([8]))).toMatchObject({
+            voltage_c: 2300,
+            current_c: 1.5,
+            power_c: 1234,
+        });
         expect(meta.deviceExposesChanged).not.toHaveBeenCalled();
         expect(device.save).not.toHaveBeenCalled();
+    });
+
+    it("maps cba devices without changing the stable expose set", async () => {
+        const device = smtonoffDevice();
+        const definition = requireDefinition(await findByDevice(device));
+        const meta = converterMeta(device);
+        const options = {phase_mapping: "cba"};
+
+        expect(converterFor(definition, 6).from?.(samplePayload, meta, options, () => {}, tuyaMessage([6]))).toMatchObject({
+            voltage_c: 2300,
+            current_c: 1.5,
+            power_c: 1234,
+        });
+        expect(converterFor(definition, 7).from?.(samplePayload, meta, options, () => {}, tuyaMessage([7]))).toMatchObject({
+            voltage_b: 2300,
+            current_b: 1.5,
+            power_b: 1234,
+        });
+        expect(converterFor(definition, 8).from?.(samplePayload, meta, options, () => {}, tuyaMessage([8]))).toMatchObject({
+            voltage_a: 2300,
+            current_a: 1.5,
+            power_a: 1234,
+        });
+        expect(exposeProperties(definition)).toEqual(
+            expect.arrayContaining(["power_a", "power_b", "power_c", "current_a", "current_b", "current_c"]),
+        );
+        expect(exposeProperties(definition)).not.toContain("power");
+        expect(meta.deviceExposesChanged).not.toHaveBeenCalled();
+        expect(device.save).not.toHaveBeenCalled();
+    });
+
+    it("falls back to abc for an omitted or unknown option", async () => {
+        const definition = requireDefinition(await findByDevice(smtonoffDevice()));
+
+        for (const options of [{}, {phase_mapping: "invalid"}]) {
+            const device = smtonoffDevice();
+            const meta = converterMeta(device);
+            expect(converterFor(definition, 6).from?.(samplePayload, meta, options, () => {}, tuyaMessage([6]))).toMatchObject({
+                power_a: 1234,
+            });
+        }
     });
 });
