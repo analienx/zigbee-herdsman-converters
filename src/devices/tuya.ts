@@ -12,7 +12,7 @@ import * as m from "../lib/modernExtend";
 import * as reporting from "../lib/reporting";
 import * as globalStore from "../lib/store";
 import * as tuya from "../lib/tuya";
-import type {DefinitionWithExtend, Expose, Fz, KeyValue, KeyValueAny, Tz, Zh} from "../lib/types";
+import type {DefinitionWithExtend, Expose, Fz, KeyValue, KeyValueAny, Tz, Tuya, Zh} from "../lib/types";
 import * as utils from "../lib/utils";
 import {addActionGroup, hasAlreadyProcessedMessage, isDummyDevice, postfixWithEndpointName} from "../lib/utils";
 import * as zosung from "../lib/zosung";
@@ -25,6 +25,21 @@ const ea = exposes.access;
 
 const te = tuya.exposes;
 const tvc = tuya.valueConverter;
+
+type Phase = "a" | "b" | "c";
+type PhaseMapping = "abc" | "cba";
+
+const phaseMappings: Record<PhaseMapping, Record<6 | 7 | 8, Phase>> = {
+    abc: {6: "a", 7: "b", 8: "c"},
+    cba: {6: "c", 7: "b", 8: "a"},
+};
+
+const phaseVariant = (dp: 6 | 7 | 8): Tuya.ValueConverterSingle => ({
+    from: (value, _meta, options) => {
+        const mapping: PhaseMapping = options?.phase_mapping === "cba" ? "cba" : "abc";
+        return tuya.valueConverter.phaseVariant2WithPhase(phaseMappings[mapping][dp]).from(value);
+    },
+});
 
 const fzZosung = zosung.fzZosung;
 const tzZosung = zosung.tzZosung;
@@ -12178,6 +12193,7 @@ export const definitions: DefinitionWithExtend[] = [
         vendor: "SUTON",
         description: "Zigbee DIN RCBO energy meter",
         extend: [tuya.modernExtend.tuyaBase({dp: true})],
+        options: [exposes.options.phase_mapping()],
         exposes: [
             tuya.exposes.switch(),
             e.energy(),
@@ -12260,9 +12276,9 @@ export const definitions: DefinitionWithExtend[] = [
         meta: {
             tuyaDatapoints: [
                 [1, "energy", tuya.valueConverter.divideBy100],
-                [6, null, tuya.valueConverter.phaseVariant2WithPhase("a")],
-                [7, null, tuya.valueConverter.phaseVariant2WithPhase("b")],
-                [8, null, tuya.valueConverter.phaseVariant2WithPhase("c")],
+                [6, null, phaseVariant(6)],
+                [7, null, phaseVariant(7)],
+                [8, null, phaseVariant(8)],
                 [9, "faults", tuya.valueConverter.circuitBreakerFaults],
                 [16, "state", tuya.valueConverter.onOff],
                 [17, null, tuya.valueConverter.threshold_2],

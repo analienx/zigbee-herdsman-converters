@@ -73,18 +73,18 @@ function exposeProperties(definition: Definition) {
 
 const samplePayload = Buffer.from([0x59, 0xd8, 0x00, 0x05, 0xdc, 0x00, 0x04, 0xd2]).toString("base64");
 
-describe("SMTONOFF ZXB3-125 phase mapping", () => {
-    it("selects the dedicated definition and keeps the SUTON ED00 fallback", async () => {
-        const smtonoff = await findByDevice(smtonoffDevice());
-        expect(smtonoff).toMatchObject({model: "ZXB3-125", vendor: "SMTONOFF", version: "0.0.2"});
-        expect(smtonoff?.fingerprint?.[0].priority).toBe(1);
-        expect(smtonoff?.options?.find((option) => option.name === "phase_mapping")).toMatchObject({
+describe("shared _TZE204_wbhaespm phase mapping", () => {
+    it("uses the broad shared definition without a dedicated priority matcher", async () => {
+        const shared = requireDefinition(await findByDevice(smtonoffDevice()));
+        expect(shared).toMatchObject({model: "STB3L-125-ZJ", vendor: "SUTON"});
+        expect(shared.fingerprint?.[0].priority).toBeUndefined();
+        expect(shared.options?.find((option) => option.name === "phase_mapping")).toMatchObject({
             type: "enum",
             values: ["abc", "cba"],
         });
 
         const suton = await findByDevice(smtonoffDevice(sutonEd00Endpoints()));
-        expect(suton).toMatchObject({model: "STB3L-125-ZJ", vendor: "SUTON"});
+        expect(suton).toMatchObject({model: shared.model, vendor: shared.vendor});
     });
 
     it("uses legacy abc mapping by default", async () => {
@@ -132,9 +132,10 @@ describe("SMTONOFF ZXB3-125 phase mapping", () => {
             current_a: 1.5,
             power_a: 1234,
         });
-        expect(exposeProperties(definition)).toEqual(
-            expect.arrayContaining(["power_a", "power_b", "power_c", "current_a", "current_b", "current_c"]),
-        );
+        const abcExposes = exposeProperties(definition);
+        const cbaExposes = exposeProperties(definition);
+        expect(cbaExposes).toEqual(abcExposes);
+        expect(abcExposes).toEqual(expect.arrayContaining(["power_a", "power_b", "power_c", "current_a", "current_b", "current_c"]));
         expect(exposeProperties(definition)).not.toContain("power");
         expect(meta.deviceExposesChanged).not.toHaveBeenCalled();
         expect(device.save).not.toHaveBeenCalled();
